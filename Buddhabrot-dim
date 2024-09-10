@@ -1,0 +1,116 @@
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+
+#include <complex>
+#include <vector>
+#include <iostream>
+
+const int width = 9000;
+const int height = 9000;
+const int maxIterations = 30000;
+const int samples = 90000000; // Number of random samples for the Buddhabrot
+
+std::vector<int> buddhabrotData(width * height, 0);
+
+// Function to generate a color based on iteration intensity
+void mapColor(int value, int maxVal, unsigned char& r, unsigned char& g, unsigned char& b) {
+    double normalized = (double)value / (double)maxVal;
+
+    // Simple color gradient from black -> blue -> green -> red -> white
+    if (normalized < 0.25) {
+        r = 0;
+        g = 0;
+        b = static_cast<unsigned char>(255 * (normalized / 0.25));
+    } else if (normalized < 0.5) {
+        r = 0;
+        g = static_cast<unsigned char>(255 * ((normalized - 0.25) / 0.25));
+        b = 255;
+    } else if (normalized < 0.75) {
+        r = static_cast<unsigned char>(255 * ((normalized - 0.5) / 0.25));
+        g = 255;
+        b = 255 - r;
+    } else {
+        r = 255;
+        g = static_cast<unsigned char>(255 * ((1.0 - normalized) / 0.25));
+        b = 0;
+    }
+}
+
+std::complex<double> randomComplexInRange(double minX, double maxX, double minY, double maxY) {
+    double real = minX + (maxX - minX) * (rand() / (double)RAND_MAX);
+    double imag = minY + (maxY - minY) * (rand() / (double)RAND_MAX);
+    return std::complex<double>(real, imag);
+}
+
+int mandelbrotEscapeTime(std::complex<double> c, int maxIter) {
+    std::complex<double> z = 0;
+    for (int i = 0; i < maxIter; ++i) {
+        z = z * z + c;
+        if (std::norm(z) > 6.0) {
+            return i;  // Escape at this iteration
+        }
+    }
+    return maxIter;
+}
+
+void buddhabrot() {
+    for (int i = 0; i < samples; ++i) {
+        std::complex<double> c = randomComplexInRange(-2.0, 1.0, -1.5, 1.5);
+        std::complex<double> z = 0;
+        std::vector<std::complex<double>> trajectory;
+
+        // Track the Mandelbrot iterations
+        for (int j = 0; j < maxIterations; ++j) {
+            z = z * z + c;
+            if (std::norm(z) > 6.0) {
+                // Record the points along the trajectory only if it escapes
+                for (auto& point : trajectory) {
+                    double x = (point.real() + 2.0) * (width / 3.0);
+                    double y = (point.imag() + 1.5) * (height / 3.0);
+
+                    int px = (int)x;
+                    int py = (int)y;
+                    if (px >= 0 && px < width && py >= 0 && py < height) {
+                        buddhabrotData[py * width + px]++;
+                    }
+                }
+                break;
+            }
+            trajectory.push_back(z);
+        }
+    }
+}
+
+void normalizeAndSaveImage(const std::string& filename) {
+    int maxVal = 0;
+    for (auto val : buddhabrotData) {
+        if (val > maxVal) maxVal = val;
+    }
+
+    std::vector<unsigned char> imageData(width * height * 3); // RGB image
+
+    for (int i = 0; i < width * height; ++i) {
+        unsigned char r, g, b;
+        mapColor(buddhabrotData[i], maxVal, r, g, b); // Map intensity to color
+
+        imageData[i * 3 + 0] = r; // R
+        imageData[i * 3 + 1] = g; // G
+        imageData[i * 3 + 2] = b; // B
+    }
+
+    // Write PNG file
+    stbi_write_png(filename.c_str(), width, height, 3, imageData.data(), width * 3);
+}
+
+int main() {
+    srand(time(0));
+
+    std::cout << "Generating Buddhabrot fractal..." << std::endl;
+    buddhabrot();
+
+    std::cout << "Saving image as 'buddhabrot.png'..." << std::endl;
+    normalizeAndSaveImage("buddhabrot.png");
+
+    std::cout << "Done!" << std::endl;
+    return 0;
+}
