@@ -1,0 +1,107 @@
+#include <iostream>
+#include <complex>
+#include <cmath>  // For pow and log functions
+
+// Define STB_IMAGE_WRITE_IMPLEMENTATION before including the header
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+
+const int width = 800;   // Width of the output image in pixels
+const int height = 800;  // Height of the output image in pixels
+const int max_iter = 1000; // Maximum number of iterations
+
+// Function to map a value from one range to another
+double map(double value, double in_min, double in_max, double out_min, double out_max) {
+    return out_min + (value - in_min) * (out_max - out_min) / (in_max - in_min);
+}
+
+// Function to generate colors based on the escape time
+void color_pixel(int iter, int max_iter, unsigned char* pixel) {
+    if (iter == max_iter) {
+        // Points inside the Mandelbrot set (black)
+        pixel[0] = 0;  // Red
+        pixel[1] = 0;  // Green
+        pixel[2] = 0;  // Blue
+    } else {
+        // Points outside the Mandelbrot set, color based on the escape time
+        double t = (double)iter / max_iter;
+
+        // Apply a logarithmic scale to brighten the colors for points that escape quickly
+        t = sqrt(t); // Non-linear scaling to enhance contrast
+
+        // Assign color based on t with a brightening effect
+        pixel[0] = (unsigned char)(9 * (1 - t) * t * t * t * 255);  // Red
+        pixel[1] = (unsigned char)(15 * (1 - t) * (1 - t) * t * t * 255); // Green
+        pixel[2] = (unsigned char)(8.5 * (1 - t) * (1 - t) * (1 - t) * t * 255);  // Blue
+    }
+}
+
+// Function to generate the Mandelbrot set and store it in a pixel buffer
+void generate_mandelbrot(unsigned char* image, std::complex<double> centre, double length_of_image) {
+    double half_length = length_of_image / 2.0;  // Half the length of the side of the square
+    double re_min = std::real(centre) - half_length;  // Left boundary of the complex plane
+    double re_max = std::real(centre) + half_length;  // Right boundary of the complex plane
+    double im_min = std::imag(centre) - half_length;  // Bottom boundary of the complex plane
+    double im_max = std::imag(centre) + half_length;  // Top boundary of the complex plane
+
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            // Map pixel position to complex plane based on the centre and length_of_image
+            double real = map(x, 0, width, re_min, re_max);
+            double imag = map(y, 0, height, im_min, im_max);
+            std::complex<double> c(real, imag);
+
+            // Initialize complex number z = 0
+            std::complex<double> z = 0;
+            int iter = 0;
+            double xold = 0, yold = 0;  // Variables for periodicity checking
+            int period = 0;
+
+            // Mandelbrot iteration
+            while (std::abs(z) <= 2 && iter < max_iter) {
+                z =  z * z + c;
+                iter++;
+
+                // Check for periodicity after every 20 iterations
+                if (period > 20) {
+                    if (std::abs(std::real(z) - xold) < 1e-6 && std::abs(std::imag(z) - yold) < 1e-6) {
+                        iter = max_iter;  // Treat it as a point inside the Mandelbrot set
+                        break;
+                    }
+                    period = 0;
+                    xold = std::real(z);
+                    yold = std::imag(z);
+                }
+                period++;
+            }
+
+            // Color the pixel based on the escape time
+            int index = (y * width + x) * 3;
+            color_pixel(iter, max_iter, &image[index]);
+        }
+    }
+}
+
+int main() {
+    // Allocate memory for the image (RGB format, 3 bytes per pixel)
+    unsigned char* image = new unsigned char[width * height * 3];
+
+    // Define the centre and length of the image (zoom level)
+    std::complex<double> centre(0.38875, -0.13625);  // Example: Zoom in on the main bulb of the Mandelbrot set
+    double length_of_image = 0.0175;  // Length of the side of the complex plane (change this for zooming in/out)
+
+    // Generate the Mandelbrot set
+    generate_mandelbrot(image, centre, length_of_image);
+
+    // Write the image to a PNG file using stb_image_write
+    if (stbi_write_png("mandelbrot_zoomed.png", width, height, 3, image, width * 3)) {
+        std::cout << "Mandelbrot image saved as 'mandelbrot_zoomed.png'" << std::endl;
+    } else {
+        std::cerr << "Failed to save the image." << std::endl;
+    }
+
+    // Free the allocated memory
+    delete[] image;
+
+    return 0;
+}
